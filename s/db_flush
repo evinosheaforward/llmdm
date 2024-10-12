@@ -1,0 +1,5 @@
+#!/bin/bash
+
+podman stop arangodb-instance
+podman rm arangodb-instance
+podman ps

@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "llmdm"
+version = "0.1.0"
+description = ""
+authors = ["Evin O'Shea <evinoshea@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.scripts]
+llmdm = "llmdm.game:run"
+llmdm-debug = "llmdm.game:run_debug"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+accelerate = "*"
+python-arango = "*"
+transformers = "*"
+torch = {version = "*", source = "pytorch"}
+aqlm = {extras = ["gpu"], version = "^1.1.6"}
+
+[[tool.poetry.source]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu124"
+priority = "explicit"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

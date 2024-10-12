@@ -1,0 +1,9 @@
+#!/bin/bash
+
+out=$(podman run -e ARANGO_ROOT_PASSWORD=password -p 8529:8529 -d --name arangodb-instance arangodb 2>&1)
+
+if [[ "$out" == "Error:"* ]]; then
+    podman start arangodb-instance
+fi
+
+podman ps
