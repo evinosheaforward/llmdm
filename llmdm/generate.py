@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 
 from transformers import AutoTokenizer, pipeline
 
@@ -10,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 class LLM:
     def __init__(self):
-        model_name = "meta-llama/Llama-3.2-3B-Instruct"
+        model_name = os.getenv("LLMDM_MODEL", "meta-llama/Llama-3.2-3B-Instruct")
         # model_name = "meta-llama/Llama-3.2-1B-Instruct"
         # model_name = "meta-llama/Llama-3.1-8B-Instruct"
         # model_name = "ISTA-DASLab/Meta-Llama-3.1-70B-Instruct-AQLM-PV-2Bit-1x16"
