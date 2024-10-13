@@ -113,7 +113,8 @@ class GetInformation(Action):
             print(str_dataclass(entity))
 
             relations = db_wrapper.get_relations_for_entity(entity)
-            print(f"{self.prompt_response.info} has these relations:")
+            if relations:
+                print(f"{self.prompt_response.info} has these relations:")
             for relation in relations:
                 logger.debug(f"GetInformation.perform - {relation}")
                 print(str_dataclass(relation))
@@ -149,6 +150,7 @@ You are an AI trained to parse json data from questions. You ONLY output json. Y
     "object/<object-name>
 ]
             """,
+            json_out=True,
         )
         logger.debug(
             f"AskQuestion.perform - entities identified by llm: {entities_extracted}"
@@ -169,14 +171,35 @@ You are an AI trained to parse json data from questions. You ONLY output json. Y
         response = llm.generate(
             prompt="\n".join(
                 [
-                    "The user has a question about the story. Use the following information to answer the question:",
+                    "The user has a question about the story. Here is some helpful information:",
                     context,
                     "The user's question is:",
                     self.prompt_response.question,
                 ]
-            )
+            ),
+            system_instructions="You are an AI story teller backed by data storage. You take structured data in, and weave an elegant story in response. You are in control of the story and get to decide what happens, so fill in the details if they aren't there.",
         )
         print(response)
+
+
+@dataclass
+class GenerateStoryPrompt:
+    prompt: str = "your prompt which will generate a story element"
+
+
+class GenerateStory(Action):
+    prompt_type = GenerateStoryPrompt
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def perform(self, db_wrapper: DatabaseWrapper, llm: LLM, **kwargs):
+        logger.debug(f"GenerateStory.perform - {self.prompt_response}")
+        print(
+            llm.generate_story(
+                prompt=self.prompt_response.prompt, db_wrapper=db_wrapper
+            )
+        )
 
 
 @dataclass

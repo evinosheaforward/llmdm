@@ -1,8 +1,11 @@
+import logging
 from dataclasses import asdict
 
 from arango import ArangoClient
 
 from llmdm.data_types import Entity, Relation, data_type_from_str
+
+logger = logging.getLogger(__name__)
 
 
 class DatabaseWrapper:
@@ -59,22 +62,24 @@ class DatabaseWrapper:
     def add_entity(self, entity: Entity):
         """Add a person to the database."""
         data = asdict(entity)
-        data.update({"_key": entity.name.lower()})
-        return self.db.collection(type(entity).__name__.lower()).insert(data)
+        data.update({"_key": sanitize(entity.name)})
+        logger.debug(f"DatabaseWrapper.add_entity - {data}")
+        return self.db.collection(sanitize(type(entity).__name__)).insert(data)
 
     def add_relation(self, relation: Relation):
         """Create a relation between two entities."""
+        logger.debug(f"DatabaseWrapper.add_relation - {asdict(relation)}")
         self.db.graph(
             "entity_graph",
         ).edge_collection(
             "relation",
         ).insert(
-            {k: v.lower() for k, v in asdict(relation).items() if v},
+            {k: sanitize(v) for k, v in asdict(relation).items() if v},
         )
 
     def get_entity_by_id(self, entity_id: str) -> Entity:
         """Get a specific entity by its document ID."""
-        entity_id = entity_id.lower()
+        entity_id = sanitize(entity_id)
         collection_name = entity_id.split("/")[0]
         entity_type = data_type_from_str(collection_name)
         return entity_type(**self.db.collection(collection_name).get(entity_id))
@@ -90,7 +95,14 @@ class DatabaseWrapper:
                         RETURN edge
                 """,
                 bind_vars={
-                    "entity_id": f"{type(entity).__name__}/{entity.name}".lower()
+                    "entity_id": sanitize(f"{type(entity).__name__}/{entity.name}")
                 },
             )
         )
+
+
+def sanitize(name):
+    for token in " -,_'":
+        name = "".join(name.split(token))
+
+    return name.lower()
