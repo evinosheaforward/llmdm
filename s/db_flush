@@ -2,4 +2,7 @@
 
 podman stop arangodb-instance
 podman rm arangodb-instance
+
+podman stop opensearch
+podman rm opensearch
 podman ps

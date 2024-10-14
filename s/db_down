@@ -1,4 +1,5 @@
 #!/bin/bash
 
 podman stop arangodb-instance
+podman stop opensearch
 podman ps

@@ -3,17 +3,21 @@ import logging
 from dataclasses import dataclass, fields
 from enum import Enum
 
-from llmdm.data_types import (
-    Entity,
-    Relation,
-    data_type_from_str,
-    prompt_dataclass,
-    str_dataclass,
-)
-from llmdm.generate import LLM
-from llmdm.graph_client import DatabaseWrapper
+from llmdm.data_types import Entity, Relation, prompt_dataclass, str_dataclass
+from llmdm.game_data import GameData
+from llmdm.utils import sanitize
 
 logger = logging.getLogger(__name__)
+
+
+# actions that can be taken in conversation
+class ConversationAction:
+    pass
+
+
+# actions that can be taken in conversation
+class FreeModeAction:
+    pass
 
 
 class Action:
@@ -22,31 +26,40 @@ class Action:
 
     @classmethod
     def get_input(cls):
-        return cls(prompt_response=cls.prompt_type(**cls.prompt()))
+        if (prompt_response := cls.prompt()) is not None:
+            return cls(cls.prompt_type(**prompt_response))
 
     @classmethod
     def prompt(cls):
         prompt_response = {}
         for field in fields(cls.prompt_type):
+            print('Enter "cancel" to cancel the action')
             while True:
                 user_input = input(f"Input {field.name} - {field.default}:\n").strip()
                 if user_input:
+                    if user_input.lower().strip() == "cancel":
+                        return None
                     prompt_response[field.name] = user_input
                     break
         logger.debug(f"Action.prompt - {prompt_response=}")
         return prompt_response
 
-    def perform(self, db_wrapper: DatabaseWrapper):
+    def perform(self, game: GameData):
         pass
 
 
 @dataclass
+class EmptyPrompt:
+    pass
+
+
+@dataclass
 class AddInformationPrompt:
-    info_type: str = "a person, place, object, relation"
+    info_type: str = "entity or relation"
     datum: Entity = Entity()
 
 
-class AddInformation(Action):
+class AddInformation(Action, FreeModeAction):
     prompt_type = AddInformationPrompt
 
     def __init__(self, *args, **kwargs):
@@ -56,10 +69,11 @@ class AddInformation(Action):
     def prompt(cls):
         info_field = cls.prompt_type.__dataclass_fields__["info_type"]
         prompt_response = {info_field.name: input(f"Input {info_field.default}:\n")}
-        # TODO add error handling
         try:
             prompt_response["datum"] = prompt_dataclass(
-                data_type_from_str(prompt_response["info_type"])
+                Relation(prompt_response["info_type"])
+                if sanitize(prompt_response["info_type"]) == "relation"
+                else Entity(prompt_response["info_type"])
             )
         except KeyError:
             print(f"Sorry, {prompt_response['info_type']} is not a valid data type")
@@ -67,15 +81,15 @@ class AddInformation(Action):
         logger.debug(f"Action.prompt - {prompt_response=}")
         return prompt_response
 
-    def perform(self, db_wrapper: DatabaseWrapper, **kwargs):
+    def perform(self, game: GameData, **kwargs):
         logger.debug(f"AddInformation.perform - {self.prompt_response}")
         if self.prompt_response.datum is None:
             return
         try:
             if isinstance(self.prompt_response.datum, Relation):
-                db_wrapper.add_relation(self.prompt_response.datum)
+                game.add_relation(self.prompt_response.datum)
             else:
-                db_wrapper.add_entity(self.prompt_response.datum)
+                game.add_entity(self.prompt_response.datum)
         except Exception as e:
             logger.exception(f"AddInformation.perform: {e}")
             if "document not found" in str(e):
@@ -90,29 +104,23 @@ class AddInformation(Action):
 
 @dataclass
 class GetInformationPrompt:
-    info: str = "person/<name>, place/<name>, object/<name>"
+    info: str = "Name of person/place/thing"
 
 
-class GetInformation(Action):
+class GetInformation(Action, FreeModeAction):
     prompt_type = GetInformationPrompt
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def perform(self, db_wrapper: DatabaseWrapper, **kwargs):
+    def perform(self, game: GameData, **kwargs):
         logger.debug(f"GetInformation.perform - {self.prompt_response}")
         try:
-            info_type = data_type_from_str(self.prompt_response.info)
-        except KeyError:
-            print(
-                f"Sorry, {self.prompt_response.info.split('/')[0]} is not a valid data type"
-            )
-        try:
-            entity = db_wrapper.get_entity_by_id(self.prompt_response.info)
+            entity = game.get(self.prompt_response.info)
             print(f"{self.prompt_response.info}:")
             print(str_dataclass(entity))
 
-            relations = db_wrapper.get_relations_for_entity(entity)
+            relations = game.get_relations_for_entity(entity)
             if relations:
                 print(f"{self.prompt_response.info} has these relations:")
             for relation in relations:
@@ -121,7 +129,7 @@ class GetInformation(Action):
 
         except Exception as e:
             logger.exception(f"GetInformation.perform: {e}")
-            print(f"Sorry, that {info_type.__name__} wasn't found.")
+            print(f"Sorry, {self.prompt_response.info} wasn't found.")
 
 
 @dataclass
@@ -129,15 +137,16 @@ class AskQuestionPrompt:
     question: str = "your question"
 
 
-class AskQuestion(Action):
+class AskQuestion(Action, FreeModeAction):
     prompt_type = AskQuestionPrompt
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def perform(self, db_wrapper: DatabaseWrapper, llm: LLM, **kwargs):
+    # Todo update
+    def perform(self, game: GameData):
         logger.debug(f"AskQuestion.perform - {self.prompt_response}")
-        entities_extracted = llm.generate(
+        entities_extracted = game.llm.generate(
             prompt=f"""
 Parse the people, places, and objects from the following question into the json format:
 {self.prompt_response.question}
@@ -159,16 +168,16 @@ You are an AI trained to parse json data from questions. You ONLY output json. Y
         entities_data = []
         for entity_id in entities_list:
             try:
-                entity = db_wrapper.get_entity_by_id(entity_id)
+                entity = game.get_entity_by_id(entity_id)
                 entities_data.append(entity)
                 entities_data.extend(
-                    db_wrapper.get_relations_for_entity(entity),
+                    game.get_relations_for_entity(entity),
                 )
             except Exception:
                 logger.debug(f"{entity_id} not found")
         context = "\n".join(set(map(str_dataclass, entities_data)))
         logger.debug(f"AskQuestion: Gathered info for llm:\n{context}")
-        response = llm.generate(
+        response = game.llm.generate(
             prompt="\n".join(
                 [
                     "The user has a question about the story. Here is some helpful information:",
@@ -177,7 +186,7 @@ You are an AI trained to parse json data from questions. You ONLY output json. Y
                     self.prompt_response.question,
                 ]
             ),
-            system_instructions="You are an AI story teller backed by data storage. You take structured data in, and weave an elegant story in response. You are in control of the story and get to decide what happens, so fill in the details if they aren't there.",
+            system_instructions="You are an AI story teller backed by data storage. You answer in a way that preserves the immersion of the story, while answering the question directly.",
         )
         print(response)
 
@@ -187,28 +196,106 @@ class GenerateStoryPrompt:
     prompt: str = "your prompt which will generate a story element"
 
 
-class GenerateStory(Action):
+class GenerateStory(Action, FreeModeAction):
     prompt_type = GenerateStoryPrompt
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def perform(self, db_wrapper: DatabaseWrapper, llm: LLM, **kwargs):
+    def perform(self, game_data: GameData, **kwargs):
         logger.debug(f"GenerateStory.perform - {self.prompt_response}")
         print(
-            llm.generate_story(
-                prompt=self.prompt_response.prompt, db_wrapper=db_wrapper
+            game_data.llm.generate_story(
+                prompt=self.prompt_response.prompt, game_data=game_data
             )
         )
 
 
 @dataclass
-class EmptyPrompt:
-    pass
+class GetGameState(Action, FreeModeAction, ConversationAction):
+    prompt_type = EmptyPrompt
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def perform(self, game_data: GameData, **kwargs):
+        game_data.print_state()
 
 
 @dataclass
-class Exit(Action):
+class MovePrompt:
+    prompt: str = "Where do you want to go?"
+
+
+class Move(Action, FreeModeAction):
+    prompt_type = MovePrompt
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def perform(self, game_data: GameData):
+        logger.debug(f"Move.perform - {self.prompt_response}")
+        location = game_data.get_location_to_move_to(self.prompt_response.prompt)
+        game_data.travel_to(location)
+
+
+@dataclass
+class StartConversationPrompt:
+    prompt: str = "Who do you want to talk to?"
+
+
+class StartConversation(Action, FreeModeAction):
+    prompt_type = StartConversationPrompt
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def perform(self, game_data: GameData):
+        logger.debug(f"Talk.perform - {self.prompt_response}")
+        npc = game_data.get_npc_to_talk_to(self.prompt_response.prompt)
+        game_data.transition_mode_to("conversation", npc=npc)
+
+
+@dataclass
+class SayPrompt:
+    prompt: str = "What do you say?"
+
+
+class Talk(Action, ConversationAction):
+    prompt_type = SayPrompt
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def perform(self, game_data: GameData):
+        logger.debug(f"Talk.perform - {self.prompt_response}")
+        npc_ends_conversation = game_data.respond_as_npc_to_talking(
+            self.prompt_response.prompt
+        )
+        if npc_ends_conversation:
+            game_data.transition_mode_to("free")
+
+
+@dataclass
+class LeaveConversationPrompt:
+    prompt: str = "What do you say as you leave?"
+
+
+class LeaveConversation(Action, ConversationAction):
+    prompt_type = LeaveConversationPrompt
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def perform(self, game_data: GameData):
+        logger.debug(f"LeaveConversation.perform - {self.prompt_response}")
+        # does create combat?
+        game_data.respond_as_npc_to_leaving(self.prompt_response.prompt)
+        game_data.transition_mode_to("free")
+
+
+@dataclass
+class Exit(Action, FreeModeAction, ConversationAction):
     prompt_type = EmptyPrompt
 
     def __init__(self, *args, **kwargs):
@@ -224,3 +311,31 @@ def actions_enum():
 
 Actions = actions_enum()
 ActionNames = [member.value.__name__ for member in Actions]
+
+
+def freemode_actions_enum():
+    return Enum(
+        "FreeModeActions",
+        {
+            subclass.__name__.lower(): subclass
+            for subclass in FreeModeAction.__subclasses__()
+        },
+    )
+
+
+FreeModeActions = freemode_actions_enum()
+FreeModeActionNames = [member.value.__name__ for member in FreeModeActions]
+
+
+def conversation_actions_enum():
+    return Enum(
+        "ConversationActions",
+        {
+            subclass.__name__.lower(): subclass
+            for subclass in ConversationAction.__subclasses__()
+        },
+    )
+
+
+ConversationActions = conversation_actions_enum()
+ConversationActionNames = [member.value.__name__ for member in ConversationActions]

@@ -6,4 +6,17 @@ if [[ "$out" == "Error:"* ]]; then
     podman start arangodb-instance
 fi
 
+out=$(
+    podman run -d --name opensearch \
+    -e "discovery.type=single-node" \
+    -e "plugins.security.disabled=true" \
+    -e "OPENSEARCH_INITIAL_ADMIN_PASSWORD=C0mpliCatedpassword!" \
+    -p 9200:9200 -p 9600:9600 \
+    opensearchproject/opensearch:latest
+)
+
+if [[ "$out" == "Error:"* ]]; then
+    podman start opensearch
+fi
+
 podman ps

@@ -13,21 +13,6 @@ class Entity:
 
 
 @dataclass
-class Person(Entity):
-    pass
-
-
-@dataclass
-class Place(Entity):
-    pass
-
-
-@dataclass
-class Object(Entity):
-    pass
-
-
-@dataclass
 class Relation:
     _id: Optional[str] = None
     _key: Optional[str] = None
@@ -62,15 +47,6 @@ def prompt_dataclass(cls):
                 field_values[field.name] = user_input
                 break
     return cls(**field_values)
-
-
-def data_type_from_str(entity_name: str) -> type:
-    return {
-        "person": Person,
-        "place": Place,
-        "object": Object,
-        "relation": Relation,
-    }[entity_name.split("/")[0].lower().strip()]
 
 
 def str_dataclass(entity):

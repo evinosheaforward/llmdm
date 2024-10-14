@@ -3,12 +3,13 @@ from dataclasses import asdict
 
 from arango import ArangoClient
 
-from llmdm.data_types import Entity, Relation, data_type_from_str
+from llmdm.data_types import Entity, Relation
+from llmdm.utils import sanitize, suppress_stdout
 
 logger = logging.getLogger(__name__)
 
 
-class DatabaseWrapper:
+class GraphClient:
     def __init__(
         self,
         db_name,
@@ -20,7 +21,8 @@ class DatabaseWrapper:
         self.username = username
         self.password = password
         self.host = host
-        self.client = ArangoClient(hosts=host)
+        with suppress_stdout():
+            self.client = ArangoClient(hosts=host)
         self.db = self.get_db()
         self.setup_collections()
 
@@ -55,9 +57,9 @@ class DatabaseWrapper:
                     }
                 ],
             )
-            print("Graph 'entity_graph' created.")
+            logger.debug("Graph 'entity_graph' created.")
         else:
-            print("Graph 'entity_graph' already exists.")
+            logger.debug("Graph 'entity_graph' already exists.")
 
     def add_entity(self, entity: Entity):
         """Add a person to the database."""
@@ -77,12 +79,9 @@ class DatabaseWrapper:
             {k: sanitize(v) for k, v in asdict(relation).items() if v},
         )
 
-    def get_entity_by_id(self, entity_id: str) -> Entity:
+    def get_entity(self, entity_name: str) -> Entity:
         """Get a specific entity by its document ID."""
-        entity_id = sanitize(entity_id)
-        collection_name = entity_id.split("/")[0]
-        entity_type = data_type_from_str(collection_name)
-        return entity_type(**self.db.collection(collection_name).get(entity_id))
+        return Entity(**self.db.collection("entity").get(entity_name))
 
     def get_relations_for_entity(self, entity: Entity):
         """Find all relations for a specific entity (either incoming or outgoing)."""
@@ -99,10 +98,3 @@ class DatabaseWrapper:
                 },
             )
         )
-
-
-def sanitize(name):
-    for token in " -,_'":
-        name = "".join(name.split(token))
-
-    return name.lower()
