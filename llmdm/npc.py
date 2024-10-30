@@ -10,4 +10,18 @@ class NPC:
     bonds: str = "<character bonds>"
     ideals: str = "<character ideals>"
     flaws: str = "<character flaws>"
-    # faction: str = "<>"
+    role: str = "<occupation/story role>"
+    traits: str = "<character traits of the npc>"
+    gender: str = "<gender>"
+
+    def describe(self) -> str:
+        return f"""
+{self.name}: {self.description}
+with these traits:
+bonds: {self.bonds}
+ideals: {self.ideals}
+flaws: {self.flaws}
+roles: {self.role}
+traits: {self.traits}
+gender: {self.gender}
+"""

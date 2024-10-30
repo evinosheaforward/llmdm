@@ -22,43 +22,35 @@ class SQLClient:
         self.create_tables()
 
     def create_tables(self):
-        # Create the places table
-        self.cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS places (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL
-            )
-        """
-        )
-        # Create the game_state table
-        self.cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS game_state (
-                id INTEGER PRIMARY KEY CHECK (id = 1),
-                date TEXT,
-                location INTEGER,
-                mode TEXT,
-                FOREIGN KEY (location) REFERENCES places(id)
-            )
-        """
-        )
-        # Ensure there's only one row in game_state (id=1)
-        self.cursor.execute("INSERT OR IGNORE INTO game_state (id) VALUES (1)")
-
         # create the locations table
         self.cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS locations (
                 name TEXT PRIMARY KEY,
                 description TEXT,
-                connections TEXT,
                 npcs TEXT,
                 parent_location TEXT,
-                sublocations TEXT
+                sublocations TEXT,
+                location_type TEXT,
+                attributes TEXT
             )
         """
         )
+        # # Create the game_state table
+        # self.cursor.execute(
+        #     """
+        #     CREATE TABLE IF NOT EXISTS game_state (
+        #         id INTEGER PRIMARY KEY CHECK (id = 1),
+        #         date TEXT,
+        #         location INTEGER,
+        #         mode TEXT,
+        #         FOREIGN KEY (location) REFERENCES locations(id)
+        #     )
+        # """
+        # )
+        # # Ensure there's only one row in game_state (id=1)
+        # self.cursor.execute("INSERT OR IGNORE INTO game_state (id) VALUES (1)")
+
         # Create the npcs table if it doesn't exist.
         self.cursor.execute(
             """
@@ -69,71 +61,76 @@ class SQLClient:
                 behavior_type TEXT,
                 bonds TEXT,
                 ideals TEXT,
-                flaws TEXT
+                flaws TEXT,
+                role TEXT,
+                traits TEXT,
+                gender TEXT
             )
         """
         )
         self.conn.commit()
 
-    def get_game_state(self):
-        self.cursor.execute("SELECT date, location, mode FROM game_state WHERE id = 1")
-        row = self.cursor.fetchone()
-        if row:
-            return {"date": row[0], "location": row[1], "mode": row[2]}
-        else:
-            return None
+    # def get_game_state(self):
+    #     self.cursor.execute("SELECT date, location, mode FROM game_state WHERE id = 1")
+    #     row = self.cursor.fetchone()
+    #     if row:
+    #         return {"date": row[0], "location": row[1], "mode": row[2]}
+    #     else:
+    #         return None
 
-    def set_game_state(self, **kwargs):
-        # Build the query dynamically
-        columns = ", ".join(kwargs.keys())
-        placeholders = ", ".join("?" * len(kwargs))
-        values = list(kwargs.values())
-        # Ensure id=1
-        self.cursor.execute(
-            f"""
-            INSERT OR REPLACE INTO game_state (id, {columns})
-            VALUES (1, {placeholders})
-        """,
-            (values,),
-        )
-        self.conn.commit()
+    # # TODO Use this instead of json file?
+    # def set_game_state(self, **kwargs):
+    #     # Build the query dynamically
+    #     columns = ", ".join(kwargs.keys())
+    #     placeholders = ", ".join("?" * len(kwargs))
+    #     values = list(kwargs.values())
+    #     # Ensure id=1
+    #     self.cursor.execute(
+    #         f"""
+    #         INSERT OR REPLACE INTO game_state (id, {columns})
+    #         VALUES (1, {placeholders})
+    #     """,
+    #         (values,),
+    #     )
+    #     self.conn.commit()
 
-    def update_game_state(self, **kwargs):
-        # Build the query dynamically
-        assignments = ", ".join([f"{key}=?" for key in kwargs.keys()])
-        values = list(kwargs.values())
-        # Ensure id=1
-        self.cursor.execute(
-            f"""
-            UPDATE game_state
-            SET {assignments}
-            WHERE id = 1
-        """,
-            (values,),
-        )
-        self.conn.commit()
+    # def update_game_state(self, **kwargs):
+    #     # Build the query dynamically
+    #     assignments = ", ".join([f"{key}=?" for key in kwargs.keys()])
+    #     values = list(kwargs.values())
+    #     # Ensure id=1
+    #     self.cursor.execute(
+    #         f"""
+    #         UPDATE game_state
+    #         SET {assignments}
+    #         WHERE id = 1
+    #     """,
+    #         (values,),
+    #     )
+    #     self.conn.commit()
 
     def close(self):
         self.conn.close()
 
     def save_location(self, location: Location):
-        connections = json.dumps(location.connections)
         npcs = json.dumps([npc.name for npc in location.npcs])
         sublocations = json.dumps([loc.name for loc in location.sublocations])
 
         self.cursor.execute(
             """
             INSERT OR REPLACE INTO locations (
-                name, description, connections, npcs, parent_location, sublocations
-            ) VALUES (?, ?, ?, ?, ?, ?)
+                name, description, npcs, parent_location, sublocations,
+                location_type, attributes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 location.name,
                 location.description,
-                connections,
                 npcs,
                 location.parent_location,
                 sublocations,
+                location.location_type,
+                location.attributes,
             ),
         )
         self.conn.commit()
@@ -149,24 +146,58 @@ class SQLClient:
             (
                 name,
                 description,
-                connections,
                 npcs,
                 parent_location,
                 sublocations,
+                location_type,
+                attributes,
             ) = row
             location = Location(
                 name=name,
                 description=description,
-                connections=json.loads(connections),
                 npcs=json.loads(npcs),
                 parent_location=parent_location,
                 sublocations=json.loads(sublocations),
+                location_type=location_type,
+                attributes=attributes,
             )
             logger.debug(f"Location '{name}' loaded from the database.")
             return location
         else:
             logger.debug(f"Location '{name}' not found in the database.")
             return None
+
+    def get_all_locations(self) -> list[Location]:
+        self.cursor.execute(
+            "SELECT * FROM locations",
+        )
+        locations = []
+        for row in self.cursor.fetchall():
+            if row:
+                (
+                    name,
+                    description,
+                    npcs,
+                    parent_location,
+                    sublocations,
+                    location_type,
+                    attributes,
+                ) = row
+                locations.append(
+                    Location(
+                        name=name,
+                        description=description,
+                        npcs=[self.get_npc(npc_name) for npc_name in json.loads(npcs)],
+                        parent_location=parent_location,
+                        sublocations=json.loads(sublocations),
+                        location_type=location_type,
+                        attributes=attributes,
+                    )
+                )
+                logger.debug(f"Location '{name}' loaded from the database.")
+            else:
+                logger.debug(f"Location '{name}' not found in the database.")
+        return locations
 
     def save_npc(self, npc: NPC):
         """Save or update an NPC instance in the database."""
@@ -175,8 +206,9 @@ class SQLClient:
             INSERT OR REPLACE INTO npcs (
                 name, description,
                 location_name, behavior_type,
-                bonds, ideals, flaws
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                bonds, ideals, flaws, role,
+                traits, gender
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 npc.name,
@@ -186,6 +218,9 @@ class SQLClient:
                 npc.bonds,
                 npc.ideals,
                 npc.flaws,
+                npc.role,
+                npc.traits,
+                npc.gender,
             ),
         )
         self.conn.commit()
