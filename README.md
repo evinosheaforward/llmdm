@@ -20,6 +20,8 @@ What I'd like to add next are:
  - Continue to improve story data by leveraging the graph database for retrieving information about other aspects of the story when necessary. NPC actions are currently too isolated.
  - Add validation to the internals of the game so that responses are "fact-checked" for validity and uniqueness.
  - Improve the creativity/variety of the outputs of the LLM when generating pieces of the story (NPCs, locations, quests). The LLM doesn't need to do something that's never been done before, but it also can't create the same 5 NPCs over and over.
+ - Add an action for the player to ask general questions about the story (or specific NPCs, locations, people) and have the game answer them.
+ - Make the action types internal to the game by having the LLM deterimine which action the player is trying to take based on what they input to the gam.
 
 
 Long term, I'd want to add a combat system, character abilities, and character progression. I'd approach that through:
@@ -53,9 +55,11 @@ The python requirements will be installed when you build the env or install the 
 
 ## Setup
 
-You will need to set your `HF_TOKEN` to use the default (LLAMA3 model, which you need permission from Meta to use), or use model that is open on Hugging Face by setting `LLMDM_MODEL`
+You will need to set your `HF_TOKEN` to use the default model, llama 3.2-3B, which you need permission from Meta to use, see https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct).
 
-You can also use OpenAI's API if you set `USE_OPENAI=true` and set the `OPENAI_API_KEY` environment variable with your api key.
+You can also use a model that is open on Hugging Face by setting the `LLMDM_MODEL` environment variable.
+
+Lastly, you can use OpenAI's API if you set `USE_OPENAI=true` and set the `OPENAI_API_KEY` environment variable to your api key - NOTE: the game makes many LLM requests in the background and using your OPENAI api key will cause your OPENAI account to be charged. I am not responsible for any charges you incur when using this software.
 
 ## To install the game globally and run it you can run:
 ```
