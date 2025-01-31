@@ -1,8 +1,9 @@
 #!/bin/bash
 
 podman stop arangodb-instance
-podman rm arangodb-instance
+podman rm arangodb-instance --volumes
 
 podman stop opensearch
-podman rm opensearch
+podman rm opensearch --volumes
+
 podman ps

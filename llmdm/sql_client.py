@@ -2,10 +2,12 @@ import json
 import logging
 import os
 import sqlite3
+from dataclasses import asdict
 from typing import Optional
 
 from llmdm.location import Location
 from llmdm.npc import NPC
+from llmdm.quest import Quest
 from llmdm.utils import SAVE_DIR
 
 logger = logging.getLogger(__name__)
@@ -59,12 +61,28 @@ class SQLClient:
                 description TEXT,
                 location_name TEXT,
                 behavior_type TEXT,
+                appearance TEXT,
                 bonds TEXT,
                 ideals TEXT,
                 flaws TEXT,
                 role TEXT,
                 traits TEXT,
-                gender TEXT
+                gender TEXT,
+                affinity_score INTEGER,
+                affinity_type TEXT
+            )
+        """
+        )
+        self.conn.commit()
+
+        # Create the npcs table if it doesn't exist.
+        self.cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS quests (
+                name TEXT PRIMARY KEY,
+                description TEXT,
+                objective TEXT,
+                giver TEXT
             )
         """
         )
@@ -114,7 +132,7 @@ class SQLClient:
 
     def save_location(self, location: Location):
         npcs = json.dumps([npc.name for npc in location.npcs])
-        sublocations = json.dumps([loc.name for loc in location.sublocations])
+        sublocations = json.dumps(location.sublocations)
 
         self.cursor.execute(
             """
@@ -125,12 +143,12 @@ class SQLClient:
         """,
             (
                 location.name,
-                location.description,
+                str(location.description),
                 npcs,
                 location.parent_location,
                 sublocations,
-                location.location_type,
-                location.attributes,
+                str(location.location_type),
+                str(location.attributes),
             ),
         )
         self.conn.commit()
@@ -155,7 +173,7 @@ class SQLClient:
             location = Location(
                 name=name,
                 description=description,
-                npcs=json.loads(npcs),
+                npcs=[self.get_npc(npc_name) for npc_name in json.loads(npcs)],
                 parent_location=parent_location,
                 sublocations=json.loads(sublocations),
                 location_type=location_type,
@@ -201,26 +219,30 @@ class SQLClient:
 
     def save_npc(self, npc: NPC):
         """Save or update an NPC instance in the database."""
+        logger.debug(f"Inserting NPC: {asdict(npc)}")
         self.cursor.execute(
             """
             INSERT OR REPLACE INTO npcs (
                 name, description,
-                location_name, behavior_type,
+                location_name, behavior_type, appearance,
                 bonds, ideals, flaws, role,
-                traits, gender
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                traits, gender, affinity_score, affinity_type
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 npc.name,
-                npc.description,
-                npc.location_name,
-                npc.behavior_type,
-                npc.bonds,
-                npc.ideals,
-                npc.flaws,
-                npc.role,
-                npc.traits,
-                npc.gender,
+                str(npc.description),
+                str(npc.location_name),
+                str(npc.behavior_type),
+                str(npc.appearance),
+                str(npc.bonds),
+                str(npc.ideals),
+                str(npc.flaws),
+                str(npc.role),
+                str(npc.traits),
+                str(npc.gender),
+                npc.affinity_score,
+                npc.affinity_type,
             ),
         )
         self.conn.commit()
@@ -239,4 +261,66 @@ class SQLClient:
             return npc
         else:
             logger.debug(f"NPC '{name}' not found in the database.")
+            return None
+
+    def npc_name_used(self, name: str) -> bool:
+        """determine if an NPC already exists with the name given."""
+        self.cursor.execute(
+            "SELECT * FROM npcs WHERE name = ?",
+            (name,),
+        )
+        row = self.cursor.fetchone()
+        logger.debug(f"row: {row}, bool(row): {row}")
+        return bool(row)
+
+    def get_all_npcs(self) -> list[NPC]:
+        self.cursor.execute(
+            "SELECT * FROM npcs",
+        )
+        npcs = []
+        for row in self.cursor.fetchall():
+            npcs.append(NPC(*row))
+
+        return npcs
+
+    def save_quest(self, quest: Quest):
+        self.cursor.execute(
+            """
+            INSERT OR REPLACE INTO quests (
+                name, description, objective, giver
+            ) VALUES (?, ?, ?, ?)
+        """,
+            (
+                quest.name,
+                quest.description,
+                quest.objective,
+                quest.giver,
+            ),
+        )
+        self.conn.commit()
+        logger.debug(f"Quest '{quest.name}' saved to the database.")
+
+    def get_quest(self, name: str) -> Optional[Quest]:
+        self.cursor.execute(
+            "SELECT * FROM quests WHERE name = ?",
+            (name,),
+        )
+        row = self.cursor.fetchone()
+        if row:
+            (
+                name,
+                description,
+                objective,
+                giver,
+            ) = row
+            quest = Quest(
+                name=name,
+                description=description,
+                objective=objective,
+                giver=giver,
+            )
+            logger.debug(f"Quest '{name}' loaded from the database.")
+            return quest
+        else:
+            logger.debug(f"Quest '{name}' not found in the database.")
             return None

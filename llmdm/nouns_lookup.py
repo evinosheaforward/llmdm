@@ -59,6 +59,7 @@ class ProperNounDB:
 
     def add(self, name, nicknames=[]):
         """Add a name and their nicknames to the database."""
+        logger.debug(f"name: {name}, nicknames: {nicknames}")
         if name not in nicknames:
             nicknames.append(name)
 
@@ -125,7 +126,7 @@ class ProperNounDB:
         result = cursor.fetchone()
         return result[0] if result else None
 
-    def fuzzy_lookup(self, query, threshold=80, limit=10):
+    def fuzzy_lookup(self, query, threshold=10, limit=10):
         """
         Perform a fuzzy lookup for a given query.
 
@@ -144,8 +145,8 @@ class ProperNounDB:
             score_cutoff=threshold,
             limit=limit,
         )
-        logger.debug(f"fuzzy_lookup: {matches=}")
         results = []
+        logger.debug(f"fuzzy_lookup: {matches=}")
         for match in matches:
             matched_name = match[0]
             score = match[1]
@@ -160,6 +161,7 @@ class ProperNounDB:
         # Remove duplicates
         unique_results = []
         seen = set()
+        logger.debug(f"fuzzy_lookup: {results=}")
         for result in results:
             if result["name"] not in seen:
                 unique_results.append(result)

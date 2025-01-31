@@ -5,8 +5,7 @@ from enum import Enum
 
 # from llmdm.data_types import Entity, Relation, prompt_dataclass, str_dataclass
 from llmdm.game_data import GameData
-
-# from llmdm.utils import sanitize
+from llmdm.utils import prompt_user_input, render_text
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +33,11 @@ class Action:
     def prompt(cls):
         prompt_response = {}
         for field in fields(cls.prompt_type):
-            print('Enter "cancel" to cancel the action')
+            render_text('Enter "cancel" to cancel the action')
             while True:
-                user_input = input(f"Input {field.name} - {field.default}:\n").strip()
+                user_input = prompt_user_input(
+                    f"Input {field.name} - {field.default}:\n"
+                ).strip()
                 if user_input:
                     if user_input.lower().strip() == "cancel":
                         return None
@@ -77,7 +78,7 @@ class EmptyPrompt:
 # ##                 else Entity(prompt_response["info_type"])
 # ##             )
 # ##         except KeyError:
-# ##             print(f"Sorry, {prompt_response['info_type']} is not a valid data type")
+# ##             render_text(f"Sorry, {prompt_response['info_type']} is not a valid data type")
 # ##             prompt_response["datum"] = None
 # ##         logger.debug(f"Action.prompt - {prompt_response=}")
 # ##         return prompt_response
@@ -95,10 +96,10 @@ class EmptyPrompt:
 # ##             logger.exception(f"AddInformation.perform: {e}")
 # ##             if "document not found" in str(e):
 # ##                 datum = self.prompt_response.datum
-# ##                 print(f"Sorry, one of {datum._from}, {datum._to} doesn't exist.")
+# ##                 render_text(f"Sorry, one of {datum._from}, {datum._to} doesn't exist.")
 # ##             else:
 # ##                 info_type = type(self.prompt_response.datum).__name__
-# ##                 print(
+# ##                 render_text(
 # ##                     f"Sorry, {info_type}/{self.prompt_response.datum.name} already exists."
 # ##                 )
 # ##
@@ -118,19 +119,19 @@ class EmptyPrompt:
 # ##         logger.debug(f"GetInformation.perform - {self.prompt_response}")
 # ##         try:
 # ##             entity = game.get(self.prompt_response.info)
-# ##             print(f"{self.prompt_response.info}:")
-# ##             print(str_dataclass(entity))
+# ##             render_text(f"{self.prompt_response.info}:")
+# ##             render_text(str_dataclass(entity))
 # ##
 # ##             relations = game.get_relations_for_entity(entity)
 # ##             if relations:
-# ##                 print(f"{self.prompt_response.info} has these relations:")
+# ##                 render_text(f"{self.prompt_response.info} has these relations:")
 # ##             for relation in relations:
 # ##                 logger.debug(f"GetInformation.perform - {relation}")
-# ##                 print(str_dataclass(relation))
+# ##                 render_text(str_dataclass(relation))
 # ##
 # ##         except Exception as e:
 # ##             logger.exception(f"GetInformation.perform: {e}")
-# ##             print(f"Sorry, {self.prompt_response.info} wasn't found.")
+# ##             render_text(f"Sorry, {self.prompt_response.info} wasn't found.")
 # ##
 # ##
 # ## @dataclass
@@ -189,7 +190,7 @@ class EmptyPrompt:
 # ##             ),
 # ##             system_instructions="You are an AI story teller backed by data storage. You answer in a way that preserves the immersion of the story, while answering the question directly.",
 # ##         )
-# ##         print(response)
+# ##         render_text(response)
 # ##
 # ##
 # ## @dataclass
@@ -205,11 +206,22 @@ class EmptyPrompt:
 # ##
 # ##     def perform(self, game_data: GameData, **kwargs):
 # ##         logger.debug(f"GenerateStory.perform - {self.prompt_response}")
-# ##         print(
+# ##         render_text(
 # ##             game_data.llm.generate_story(
 # ##                 prompt=self.prompt_response.prompt, game_data=game_data
 # ##             )
 # ##         )
+
+
+@dataclass
+class DescribeScene(Action, FreeModeAction, ConversationAction):
+    prompt_type = EmptyPrompt
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def perform(self, game_data: GameData, **kwargs):
+        game_data.describe_scene()
 
 
 @dataclass
@@ -231,7 +243,7 @@ class GetCurrentLocation(Action, FreeModeAction, ConversationAction):
         super().__init__(*args, **kwargs)
 
     def perform(self, game_data: GameData, **kwargs):
-        print("The Current Location:")
+        render_text("The Current Location:")
         game_data.get_location(game_data.game_state.location).debug_describe()
 
 
@@ -248,6 +260,18 @@ class GetAllLocations(Action, FreeModeAction, ConversationAction):
 
 
 @dataclass
+class GetAllNPCs(Action, FreeModeAction, ConversationAction):
+    prompt_type = EmptyPrompt
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def perform(self, game_data: GameData, **kwargs):
+        for npc in game_data.get_all_npcs():
+            npc.debug_describe()
+
+
+@dataclass
 class MovePrompt:
     prompt: str = "Where do you want to go?"
 
@@ -260,8 +284,10 @@ class Move(Action, FreeModeAction):
 
     def perform(self, game_data: GameData):
         logger.debug(f"Move.perform - {self.prompt_response}")
-        location = game_data.get_location_to_move_to(self.prompt_response.prompt)
-        game_data.travel_to(location)
+        move_type, location = game_data.get_location_to_move_to(
+            self.prompt_response.prompt
+        )
+        game_data.travel_to(location, move_type=move_type)
 
 
 @dataclass

@@ -13,7 +13,14 @@ class OpenSearchClient:
 
     def create_index(self):
         try:
-            response = self.client.indices.create(index=self.index_name)
+            response = self.client.indices.create(
+                index=self.index_name,
+                body={
+                    "settings": {
+                        "index": {"number_of_shards": 1, "number_of_replicas": 0}
+                    }
+                },
+            )
             return response
         except RequestError as e:
             if "resource_already_exists_exception" not in str(e):
@@ -22,24 +29,40 @@ class OpenSearchClient:
     def index_document(self, document, doc_id=None):
         return self.client.index(index=self.index_name, body=document, id=doc_id)
 
-    def search_documents(self, query):
-        return self.client.search(index=self.index_name, body=query)
+    def search_documents(self, query: dict) -> list[dict]:
+        return [
+            hit["_source"]
+            for hit in self.client.search(
+                index=self.index_name,
+                body=query,
+            )
+            .get("hits", {})
+            .get("hits", [])
+        ]
 
 
 if __name__ == "__main__":
-    client = OpenSearchClient()
-
-    # Create an index
-    index_body = {
-        "settings": {"index": {"number_of_shards": 1, "number_of_replicas": 0}}
-    }
-    client.create_index(index_name="my_index", body=index_body)
+    client = OpenSearchClient("my_test_index")
 
     # Index a document
-    document = {"title": "Test document", "content": "This is a test document."}
-    client.index_document(index_name="my_index", document=document)
+    document = {"title": "Test document", "content": "test"}
+    client.index_document(document=document)
 
     # Search for a document
     search_query = {"query": {"match": {"content": "test"}}}
-    search_results = client.search_documents(index_name="my_index", query=search_query)
-    print(search_results)
+    search_results = client.search_documents(query=search_query)
+    import json
+
+    print(
+        json.dumps(
+            search_results,
+            indent=2,
+        )
+    )
+
+    print(
+        json.dumps(
+            [(i["_source"], i["_score"]) for i in search_results["hits"]["hits"]],
+            indent=2,
+        )
+    )

@@ -1,6 +1,6 @@
 import json
 from dataclasses import asdict, dataclass, field
-from typing import List, Optional
+from typing import Optional
 
 from llmdm.npc import NPC
 
@@ -9,11 +9,11 @@ from llmdm.npc import NPC
 class Location:
     name: str = "<name>"
     description: str = "<description>"
-    npcs: List["NPC"] = field(default_factory=list)
+    npcs: list["NPC"] = field(default_factory=list)
     parent_location: Optional[str] = None  # Name of the parent location
-    sublocations: List[str] = field(default_factory=list)  # Names of sublocations
+    sublocations: list[str] = field(default_factory=list)  # Names of sublocations
     location_type: str = "<Town, Forest, Dungeon, Cave, etc.>"
-    attributes: str = "<comma separated keyword attributes>"
+    attributes: str = "<comma separated list of keyword attributes>"
 
     def describe(self) -> str:
         description = ""
@@ -21,8 +21,9 @@ class Location:
             description += f"{key.replace('_', ' ')}: {getattr(self, key)}\n"
         return (
             f"""
-name: {self.description}
-        """
+name: {self.name}
+description: {self.description}
+"""
             + description
         )
 

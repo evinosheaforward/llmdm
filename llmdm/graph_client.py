@@ -1,10 +1,10 @@
 import logging
-from dataclasses import asdict
+from dataclasses import dataclass
 
 from arango import ArangoClient
+from arango.exceptions import DocumentInsertError
 
-from llmdm.data_types import Entity, Relation
-from llmdm.utils import sanitize, suppress_stdout
+from llmdm.utils import suppress_stdout
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,8 @@ class GraphClient:
 
     def setup_collections(self):
         """Set up the necessary collections and graph."""
-        for collection_name in ["person", "place", "object"]:
+        COLLECTIONS = ["npc", "location", "quest", "object"]
+        for collection_name in COLLECTIONS:
             if not self.db.has_collection(collection_name):
                 self.db.create_collection(collection_name)
 
@@ -52,8 +53,8 @@ class GraphClient:
                 edge_definitions=[
                     {
                         "edge_collection": "relation",
-                        "from_vertex_collections": ["person", "place", "object"],
-                        "to_vertex_collections": ["person", "place", "object"],
+                        "from_vertex_collections": COLLECTIONS,
+                        "to_vertex_collections": COLLECTIONS,
                     }
                 ],
             )
@@ -61,40 +62,49 @@ class GraphClient:
         else:
             logger.debug("Graph 'entity_graph' already exists.")
 
-    def add_entity(self, entity: Entity):
+    def add_entity(self, entity: dataclass):
         """Add a person to the database."""
-        data = asdict(entity)
-        data.update({"_key": sanitize(entity.name)})
+        data = {"name": entity.name, "_key": sanitize(entity.name)}
         logger.debug(f"DatabaseWrapper.add_entity - {data}")
-        return self.db.collection(sanitize(type(entity).__name__)).insert(data)
+        try:
+            self.db.collection(sanitize(type(entity).__name__)).insert(data)
+        except DocumentInsertError:
+            logger.exception("Error adding entity")
 
-    def add_relation(self, relation: Relation):
+    def add_relation(self, relation: dict):
         """Create a relation between two entities."""
-        logger.debug(f"DatabaseWrapper.add_relation - {asdict(relation)}")
-        self.db.graph(
-            "entity_graph",
-        ).edge_collection(
-            "relation",
-        ).insert(
-            {k: sanitize(v) for k, v in asdict(relation).items() if v},
-        )
-
-    def get_entity(self, entity_name: str) -> Entity:
-        """Get a specific entity by its document ID."""
-        return Entity(**self.db.collection("entity").get(entity_name))
-
-    def get_relations_for_entity(self, entity: Entity):
-        """Find all relations for a specific entity (either incoming or outgoing)."""
-        return list(
-            Relation(**datum)
-            for datum in self.db.aql.execute(
-                query="""
-                    FOR edge IN relation
-                        FILTER edge._from == @entity_id OR edge._to == @entity_id
-                        RETURN edge
-                """,
-                bind_vars={
-                    "entity_id": sanitize(f"{type(entity).__name__}/{entity.name}")
+        logger.debug(f"DatabaseWrapper.add_relation - {relation}")
+        try:
+            self.db.graph(
+                "entity_graph",
+            ).edge_collection(
+                "relation",
+            ).insert(
+                {
+                    k: "/".join(sanitize(i) for i in v.split("/"))
+                    for k, v in relation.items()
+                    if v
                 },
             )
+        except DocumentInsertError:
+            logger.exception("Error adding relation")
+
+    def get_relations_for_entity(self, entity: dataclass):
+        """Find all relations for a specific entity (either incoming or outgoing)."""
+        return self.db.aql.execute(
+            query="""
+                FOR edge IN relation
+                    FILTER edge._from == @entity_id OR edge._to == @entity_id
+                    RETURN edge
+            """,
+            bind_vars={
+                "entity_id": f"{type(entity).__name__.lower()}/{sanitize(entity.name)}"
+            },
         )
+
+
+def sanitize(name):
+    for token in "\"' ,-_/“”‘’":
+        name = "".join(name.split(token)).lower()
+
+    return name.lower()

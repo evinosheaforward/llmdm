@@ -1,0 +1,6 @@
+#!/bin/bash
+
+s/db_down
+s/db_flush
+rm saved/*
+s/db_up

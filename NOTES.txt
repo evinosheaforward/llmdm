@@ -1,0 +1,15 @@
+TODO:
+ - time evolution
+ - time progression
+ - improve location generation and travel
+ - combat
+
+
+GOAL:
+ - get quest, go to dungeon, complete quest, go back
+
+
+Guiding principle:
+ - the player is the one who is creative.
+
+
